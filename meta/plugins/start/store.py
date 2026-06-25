@@ -57,8 +57,8 @@ class BootFs(Dir):
 
     def finalize(self) -> str:
         print("Generating bootfs...")
-        BOOTFS = ".cutekit/extern/cute-engineering/ce-bootfs/src/bootfs.py"
-        shell.exec("python", BOOTFS, "--dir", self._root, self._out)
+        BOOTFS = Path(const.EXTERNS_DIR)  / "cute-engineering/ce-bootfs/src/bootfs.py"
+        shell.exec("python", str(BOOTFS), "--dir", self._root, self._out)
         return self._out
 
 
