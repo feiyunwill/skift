@@ -237,7 +237,7 @@ static Res<Ref::Path> resolve(Ref::Url url) {
     if (url.scheme == "file") {
         return Ok(url.path);
     } else if (url.scheme == "bundle") {
-        url.path.rooted = false;
+        url.path.relativize();
         return Ok("/bundles"_path / url.host.str() / url.path);
     } else {
         logError("unsupported scheme: {}", url.scheme);

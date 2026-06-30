@@ -24,7 +24,7 @@ inline usize pageAlignUp(usize addr) {
 }
 
 inline bool isPageAlign(usize addr) {
-    return isAlign(addr, PAGE_SIZE);
+    return aligned(addr, PAGE_SIZE);
 }
 
 struct IdentityMapper {

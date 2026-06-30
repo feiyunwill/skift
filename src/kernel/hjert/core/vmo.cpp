@@ -25,7 +25,7 @@ export struct Vmo : BaseObject<Vmo, Hj::Type::VMO> {
         if (size == 0)
             return Error::invalidInput("size is zero");
 
-        if (not isAlign(size, Hal::PAGE_SIZE))
+        if (not aligned(size, Hal::PAGE_SIZE))
             return Error::invalidInput("size should be page aligned");
 
         Hal::PmmMem mem = try$(pmm().allocOwned(size, flags | Hal::PmmFlags::UPPER));

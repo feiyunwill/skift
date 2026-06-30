@@ -42,7 +42,7 @@ static Res<Ref::Path> _resolveUrl(Ref::Url const& url) {
         return Ok(url.path);
     } else if (url.scheme == "location") {
         auto path = url.path;
-        path.rooted = false;
+        path.relativize();
 
         if (url.host == "home")
             return Ok("/home"_path / path);
@@ -50,7 +50,7 @@ static Res<Ref::Path> _resolveUrl(Ref::Url const& url) {
         return Ok("/home"_path / try$(Io::toPascalCase(url.host.str())) / path);
     } else if (url.scheme == "bundle") {
         auto path = url.path;
-        path.rooted = false;
+        path.relativize();
         return Ok("/bundles"_path / url.host.str() / path);
     } else {
         logError("unsupported scheme: {}", url.scheme);

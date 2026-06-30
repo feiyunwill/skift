@@ -25,10 +25,6 @@
             "git": "https://codeberg.org/skift/luna",
             "tag": "main"
         },
-        "skift/vaev": {
-            "git": "https://codeberg.org/skift/vaev",
-            "tag": "main"
-        },
         "skift/games": {
             "git": "https://codeberg.org/skift/games",
             "tag": "main"
