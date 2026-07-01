@@ -82,9 +82,7 @@ Res<Rc<Fd>> createErr() {
 
 Async::Task<Vec<DirEntry>> readDirAsync(Ref::Url const& url, Async::CancellationToken ct) {
     auto path = co_try$(_resolveUrl(url));
-    auto dir = co_trya$(Ipc::Client::connectAsync("file:"_url / path, ct));
-    auto result = co_trya$(dir.callAsync<Strata::IFs::ReadDir>({}, ct));
-    co_return result;
+    co_return co_await Skift::globalClient().callAsync(Strata::ICm::List{"file:"_url / path}, ct);
 }
 
 Res<Vec<DirEntry>> readDir(Ref::Url const& url) {
@@ -142,7 +140,7 @@ Res<Rc<Fd>> listenUdp(SocketAddr) {
 
 Res<_Connected> connectIpc(Ref::Url url) {
     auto [chan0, chan1] = try$(Skift::ChannelFd::create(url.host.str()));
-    try$(Skift::globalClient().notify(Strata::ICm::Connect{chan1, url}));
+    try$(Skift::globalClient().notify(Strata::ICm::Open{chan1, url}));
     return Ok<_Connected>(chan0, true);
 }
 

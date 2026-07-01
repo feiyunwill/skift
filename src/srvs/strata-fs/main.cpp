@@ -49,18 +49,18 @@ struct FsNodeHandler : Ipc::Session {
 
     Async::Task<> handleAsync(Ipc::Message& msg, Async::CancellationToken) override {
         if (msg.is<IFs::Read>()) {
-            co_try$(resp<IFs::Read>(msg, co_await _handleReadAsync(msg)));
+            co_return resp<IFs::Read>(msg, co_await _handleReadAsync(msg));
         } else if (msg.is<IFs::Write>()) {
-            co_try$(resp<IFs::Write>(msg, co_await _handleWriteAsync(msg)));
+            co_return resp<IFs::Write>(msg, co_await _handleWriteAsync(msg));
         } else if (msg.is<IFs::ReadDir>()) {
-            co_try$(resp<IFs::ReadDir>(msg, co_await _handleReadDirAsync(msg)));
+            co_return resp<IFs::ReadDir>(msg, co_await _handleReadDirAsync(msg));
         } else if (msg.is<IFs::Stat>()) {
-            co_try$(resp<IFs::Stat>(msg, co_await _handleStatAsync(msg)));
+            co_return resp<IFs::Stat>(msg, co_await _handleStatAsync(msg));
         } else if (msg.is<IFs::Mmap>()) {
-            co_try$(resp<IFs::Mmap>(msg, co_await _handleMmapAsync(msg)));
+            co_return resp<IFs::Mmap>(msg, co_await _handleMmapAsync(msg));
+        } else {
+            co_return unsupported(msg);
         }
-
-        co_return Ok();
     }
 };
 

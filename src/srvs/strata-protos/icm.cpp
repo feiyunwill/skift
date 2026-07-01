@@ -10,8 +10,13 @@ using namespace Karm;
 
 namespace Strata::ICm {
 
-export struct Connect {
+export struct Open {
     Opt<Rc<Sys::Fd>> fd;
+    Ref::Url url;
+};
+
+export struct List {
+    using Response = Vec<Sys::DirEntry>;
     Ref::Url url;
 };
 

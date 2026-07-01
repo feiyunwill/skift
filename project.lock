@@ -52,12 +52,12 @@
             "tag": "main"
         },
         "skift/hideo": {
-            "commit": "d2c4ca4486830b6187bcf687f91adda8d86081bf",
+            "commit": "92391ae4da6e3b83196dc6186e8d6888cb5c7246",
             "git": "https://codeberg.org/skift/hideo.git",
             "tag": "main"
         },
         "skift/karm": {
-            "commit": "f7858817fd6fcb67a1590e1510433123475e4f04",
+            "commit": "1eed20ea4c16b4336d1f67401d14f4070ca8fca8",
             "git": "https://codeberg.org/skift/karm.git",
             "tag": "main"
         },

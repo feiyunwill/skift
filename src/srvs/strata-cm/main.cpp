@@ -17,28 +17,138 @@ import Strata.Cm;
 using namespace Karm;
 using namespace Karm::Literals;
 using namespace Karm::Ref::Literals;
+using namespace Karm::Fmt::Literals;
 
 static constexpr bool DEBUG_COMPONENT = false;
 
 namespace Strata::Cm {
 
 struct ComponentManager {
+    struct Component;
+
+    struct Namespace {
+        struct Entry {
+            Ref::Path prefix;
+            Weak<Component> component;
+            Ref::Path target;
+        };
+
+        struct Resolved {
+            Rc<Component> component;
+            Ref::Path path;
+        };
+
+        Vec<Entry> _entries;
+
+        Res<Ref::Path> remap(Ref::Url url) {
+            if (url.scheme == "ipc")
+                return Ok(Ref::Path::parse("/services/{}"_f(url.host)));
+
+            if (url.scheme == "file")
+                return Ok(url.path);
+
+            return Error::notFound("unknow schema");
+        }
+
+        Res<Resolved> resolve(Ref::Path path) {
+            Opt<Entry&> maybeBest = NONE;
+            usize bestLen = 0;
+            for (auto& e : _entries) {
+                if (e.prefix.len() >= bestLen and e.prefix.parentOf(path)) {
+                    maybeBest = e;
+                    bestLen = e.prefix.len();
+                }
+            }
+
+            if (auto& [best] = maybeBest) {
+                auto component = try$(best.component.upgrade().okOr(Error::notFound()));
+                auto segments = next(path.segments(), best.prefix.len());
+                auto path = best.target / Ref::Path{segments};
+                return Ok(Resolved(component, path));
+            }
+
+            return Error::notFound();
+        }
+
+        Res<> connect(Rc<Sys::Fd> fd, Ref::Url url) {
+            url.path.normalize();
+            auto path = try$(remap(url));
+            auto resolved = try$(resolve(path));
+            return resolved.component->incoming({fd, "file:"_url / resolved.path});
+        }
+
+        Async::Task<Vec<Sys::DirEntry>> listAsync(Ref::Url url, Async::CancellationToken ct) {
+            Vec<Sys::DirEntry> result = {};
+            auto path = co_try$(remap(url));
+            for (auto& e : _entries) {
+                if (not path.parentOf(e.prefix) or e.prefix.len() <= path.len())
+                    continue;
+
+                auto name = e.prefix.segments()[path.len()];
+
+                bool duplicated =
+                    iter(result) |
+                    Any([&](Sys::DirEntry const& entry) {
+                        return entry.name == name;
+                    });
+
+                if (duplicated)
+                    continue;
+
+                result.pushBack({
+                    e.prefix.segments()[path.len()],
+                    Sys::Type::DIR,
+                });
+            }
+
+            auto maybeResolved = resolve(path).ok();
+            if (auto& [resolved] = maybeResolved) {
+                auto resolvedUrl = "file:"_url / resolved.path;
+                auto maybeListing = (co_await resolved.component->listAsync(resolvedUrl, ct)).ok();
+                if (auto& [listing] = maybeListing) {
+
+                    for (auto& e : listing) {
+                        bool duplicated =
+                            iter(result) |
+                            Any([&](Sys::DirEntry const& entry) {
+                                return entry.name == e.name;
+                            });
+
+                        if (duplicated)
+                            continue;
+                        result.pushBack(e);
+                    }
+                }
+            }
+
+            co_return Ok(std::move(result));
+        }
+
+        void mount(Ref::Path prefix, Weak<Component> component, Ref::Path target = "/"_path) {
+            _entries.pushBack({prefix, component, target});
+        }
+    };
+
     struct Component {
-        ComponentManager& _cm;
-
+        ComponentManager& _componentManager;
         String _id;
-        Sys::IpcConnection _conn;
         Hj::Job _job;
+        Sys::IpcConnection _connection;
+        Rc<Namespace> _namespace;
 
-        Component(ComponentManager& cm, String id, Sys::IpcConnection conn, Hj::Job job)
-            : _cm(cm), _id(id), _conn(std::move(conn)), _job(std::move(job)) {}
+        Component(ComponentManager& cm, String id, Hj::Job job, Sys::IpcConnection connection, Rc<Namespace> namespace_)
+            : _componentManager(cm),
+              _id(id),
+              _job(std::move(job)),
+              _connection(std::move(connection)),
+              _namespace(namespace_) {}
 
         Res<> _handleConnect(Ipc::Message& msg) {
-            auto [maybeFd, url] = try$(msg.unpack<ICm::Connect>());
+            auto [maybeFd, url] = try$(msg.unpack<ICm::Open>());
             logDebugIf(DEBUG_COMPONENT, "'{}' requested connection to '{}'", _id, url);
             auto fd = try$(maybeFd.okOr(Error::invalidData("connect without fd")));
-            
-            auto res = _cm.connect(fd, url);
+
+            auto res = _namespace->connect(fd, url);
             if (not res) {
                 Sys::IpcConnection conn{fd};
                 (void)Ipc::send(conn, Ipc::SEQ_HELLO, res.none());
@@ -47,10 +157,15 @@ struct ComponentManager {
             return res;
         }
 
+        Async::Task<ICm::List::Response> _handleListAsync(Ipc::Message& msg, Async::CancellationToken ct) {
+            auto [url] = co_try$(msg.unpack<ICm::List>());
+            co_return co_await _namespace->listAsync(url, ct);
+        }
+
         Res<> _handleLaunch(Ipc::Message& msg) {
             auto [url] = try$(msg.unpack<ICm::Launch>());
             logDebugIf(DEBUG_COMPONENT, "'{}' requested launch of '{}'", _id, url);
-            try$(_cm.start(url.host.str(), false));
+            try$(_componentManager.start(url.host.str(), _namespace));
             return Ok();
         }
 
@@ -58,10 +173,12 @@ struct ComponentManager {
             logDebugIf(DEBUG_COMPONENT, "component '{}' attached", _id);
             while (true) {
                 co_try$(ct.errorIfCanceled());
-                auto msg = co_trya$(Ipc::recvAsync(_conn, ct));
-                if (msg->is<ICm::Connect>())
+                auto msg = co_trya$(Ipc::recvAsync(_connection, ct));
+                if (msg->is<ICm::Open>()) {
                     (void)_handleConnect(*msg);
-                else if (msg->is<ICm::Launch>()) {
+                } else if (msg->is<ICm::List>()) {
+                    (void)Ipc::resp<ICm::List>(_connection, *msg, co_await _handleListAsync(*msg, ct));
+                } else if (msg->is<ICm::Launch>()) {
                     (void)_handleLaunch(*msg);
                 }
             }
@@ -69,7 +186,7 @@ struct ComponentManager {
 
         template <typename T>
         Res<> notify(T const& payload) {
-            return Ipc::send<T>(_conn, Ipc::SEQ_EVENT, payload);
+            return Ipc::send<T>(_connection, Ipc::SEQ_EVENT, payload);
         }
 
         Res<> incoming(ICm::Incoming const& incoming) {
@@ -77,12 +194,22 @@ struct ComponentManager {
             return notify(incoming);
         }
 
+        Async::Task<Ipc::Client> connectAsync(Ref::Url url, Async::CancellationToken ct) {
+            auto [clientFd, serverFd] = co_try$(Sys::Skift::ChannelFd::create(""));
+            co_try$(incoming({serverFd, url}));
+            co_return co_await Ipc::Client::connectAsync(Sys::IpcConnection{clientFd, true}, url, ct);
+        }
+
+        Async::Task<Vec<Sys::DirEntry>> listAsync(Ref::Url url, Async::CancellationToken ct) {
+            auto client = co_trya$(connectAsync(url, ct));
+            co_return co_await client.callAsync(IFs::ReadDir{}, ct);
+        }
+
         bool operator==(Component const& other) const {
             return this == &other;
         }
     };
 
-    Map<String, Rc<Component>> _exported = {};
     Vec<Rc<Component>> _active;
     Async::Promise<> _exit;
     Async::Cancellation _cancellation;
@@ -96,7 +223,6 @@ struct ComponentManager {
     void shutdown(Rc<Component> component) {
         logDebugIf(DEBUG_COMPONENT, "shutting down component '{}'", component->_id);
 
-        _exported.removeValue(component);
         _active.removeAll(component);
 
         if (_active.len() == 0) {
@@ -105,51 +231,32 @@ struct ComponentManager {
         }
     }
 
-    Res<> start(Str id, bool exported) {
-        logDebugIf(DEBUG_COMPONENT, "starting '{}' (exported: {})...", id, exported);
+    Res<Rc<Component>> start(Str id, Rc<Namespace> ns) {
+        logDebugIf(DEBUG_COMPONENT, "starting '{}'", id);
 
         auto [fd0, fd1] = try$(Sys::Skift::ChannelFd::create(id));
         auto job = try$(runElf(id, fd0));
 
-        auto component = makeRc<Component>(*this, id, Sys::IpcConnection{fd1}, std::move(job));
+        auto component = makeRc<Component>(*this, id, std::move(job), Sys::IpcConnection{fd1}, ns);
         _active.pushBack(component);
-
-        if (exported) {
-            _exported.put(id, component);
-            logDebugIf(DEBUG_COMPONENT, "exposed '{}'", id);
-        }
 
         Async::detach(component->runAsync(_cancellation.token()), [this, component](auto const&...) {
             shutdown(component);
         });
 
-        return Ok();
-    }
-
-    Res<Ref::Url> resolve(Ref::Url url) {
-        // TODO: Resolve through the requesting component's namespace and
-        //       rewrite the url, plan9 style. For now everyone shares a
-        //       single namespace and urls pass through untranslated.
-        url.path.normalize();
-        return Ok(url);
-    }
-
-    Res<> connect(Rc<Sys::Fd> fd, Ref::Url url) {
-        url = try$(resolve(url));
-        auto component = try$(
-            _exported.lookup(url.scheme == "file" ? "strata-fs"s : url.host.str())
-                .okOr(Error::notFound("component not found"))
-        );
-        return component->incoming({std::move(fd), url});
+        return Ok(component);
     }
 
     Async::Task<> runAsync() {
         logInfo("initializing system services...");
 
-        co_try$(start("strata-device"s, true));
-        co_try$(start("strata-fs"s, true));
-        co_try$(start("strata-input"s, true));
-        co_try$(start("strata-shell"s, true));
+        auto ns = makeRc<Namespace>();
+
+        ns->mount("/services/strata-device"_path, co_try$(start("strata-device"s, ns)));
+        ns->mount("/"_path, co_try$(start("strata-fs"s, ns)));
+        ns->mount("/services/strata-input"_path, co_try$(start("strata-input"s, ns)));
+        ns->mount("/services/strata-shell"_path, co_try$(start("strata-shell"s, ns)));
+
         co_return co_await _exit.future();
     }
 };

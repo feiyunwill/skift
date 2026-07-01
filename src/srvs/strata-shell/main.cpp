@@ -380,25 +380,23 @@ struct CompositorSession : Ipc::Session {
 
     Async::Task<> handleAsync(Ipc::Message& msg, Async::CancellationToken) override {
         if (msg.is<IShell::WindowCreate>())
-            co_try$(resp<IShell::WindowCreate>(msg, _handleWindowCreate(msg)));
+            co_return resp<IShell::WindowCreate>(msg, _handleWindowCreate(msg));
         else if (msg.is<IShell::WindowDestroy>())
-            co_try$(resp<IShell::WindowDestroy>(msg, _handleWindowDestroy(msg)));
+            co_return resp<IShell::WindowDestroy>(msg, _handleWindowDestroy(msg));
         else if (msg.is<IShell::WindowAttach>())
-            co_try$(resp<IShell::WindowAttach>(msg, _handleWindowAttach(msg)));
+            co_return resp<IShell::WindowAttach>(msg, _handleWindowAttach(msg));
         else if (msg.is<IShell::WindowFlip>())
-            co_try$(resp<IShell::WindowFlip>(msg, _handleWindowFlip(msg)));
+            co_return resp<IShell::WindowFlip>(msg, _handleWindowFlip(msg));
         else if (msg.is<IShell::WindowMove>())
-            co_try$(_handleWindowMove(msg));
+            co_return _handleWindowMove(msg);
         else if (msg.is<IShell::WindowResize>())
-            co_try$(_handleWindowResize(msg));
+            co_return _handleWindowResize(msg);
         else if (msg.is<IShell::WindowCursor>())
-            co_try$(_handleWindowCursor(msg));
+            co_return _handleWindowCursor(msg);
         else if (msg.is<IShell::WindowSnap>())
-            co_try$(_handleWindowSnap(msg));
+            co_return _handleWindowSnap(msg);
         else
-            logWarn("unsupported message: {}", msg.header());
-
-        co_return Ok();
+            co_return unsupported(msg);
     }
 };
 

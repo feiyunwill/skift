@@ -19,8 +19,8 @@ struct DeviceSession : Ipc::Session {
     explicit DeviceSession(Sys::IpcConnection conn)
         : Session(std::move(conn)) {}
 
-    Async::Task<> handleAsync(Ipc::Message&, Async::CancellationToken) override {
-        co_return Ok();
+    Async::Task<> handleAsync(Ipc::Message& msg, Async::CancellationToken) override {
+        co_return unsupported(msg);
     }
 };
 
