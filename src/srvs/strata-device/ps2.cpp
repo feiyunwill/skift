@@ -10,6 +10,8 @@ import Karm.Logger;
 
 import :node;
 
+using namespace Karm::Literals;
+
 namespace Strata::Device::Ps2 {
 
 static constexpr bool DEBUG_PS2 = false;
@@ -73,11 +75,15 @@ struct I8042 : Node {
     I8042(Rc<Hal::Io> io)
         : _io(io) {}
 
+    Str name() override {
+        return "i8042"s;
+    }
+
     Hal::Io& io() {
         return *_io;
     }
 
-    Res<> init();
+    Res<> init() override;
 
     Res<> flush() {
         logDebugIf(DEBUG_PS2, "ps2: flushing...");
@@ -158,7 +164,11 @@ struct Keyboard : Device {
 
     using Device::Device;
 
-    Res<> init() {
+    Str name() override {
+        return "keyboard"s;
+    }
+
+    Res<> init() override {
         logDebugIf(DEBUG_PS2, "ps2: keyboard initializing...");
         try$(ctrl().writeCmd(Cmd::ENABLE_MAIN));
 
@@ -171,7 +181,7 @@ struct Keyboard : Device {
         return Ok();
     }
 
-    Res<> event(App::Event& e) {
+    Res<> event(App::Event& e) override {
         if (auto irq = e.is<IrqEvent>()) {
             if (irq->irq == 1) {
                 auto status = try$(ctrl().readStatus());
@@ -233,7 +243,11 @@ struct Mouse : Device {
 
     using Device::Device;
 
-    Res<> init() {
+    Str name() override {
+        return "mouse"s;
+    }
+
+    Res<> init() override {
         logDebugIf(DEBUG_PS2, "ps2: mouse initializing...");
         try$(ctrl().writeCmd(Cmd::ENABLE_AUX));
 
@@ -266,7 +280,7 @@ struct Mouse : Device {
         return Ok();
     }
 
-    Res<> event(App::Event& e) {
+    Res<> event(App::Event& e) override {
         if (auto irq = e.is<IrqEvent>()) {
             if (irq->irq == 12) {
                 auto status = try$(ctrl().readStatus());

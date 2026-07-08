@@ -1,3 +1,4 @@
+#include <hal/io.h>
 #include <karm/entry>
 
 import Karm.App;
@@ -9,28 +10,19 @@ import Karm.Sys;
 
 import Hjert.Api;
 import Strata.Device;
+import Strata.Protos;
 
 using namespace Karm;
+using namespace Karm::Literals;
 using namespace Karm::Ref::Literals;
 
 namespace Strata::Device {
 
-struct DeviceSession : Ipc::Session {
-    explicit DeviceSession(Sys::IpcConnection conn)
-        : Session(std::move(conn)) {}
-
-    Async::Task<> handleAsync(Ipc::Message& msg, Async::CancellationToken) override {
-        co_return unsupported(msg);
-    }
-};
-
-struct DeviceHandler : Ipc::Handler {
-    Async::Task<Rc<Ipc::Session>> acceptSessionAsync(Sys::IpcConnection connection, Ref::Url const&, Async::CancellationToken) override {
-        co_return Ok(makeRc<DeviceSession>(std::move(connection)));
-    }
-};
-
 struct IsaRootBus : Node {
+    Str name() override {
+        return "isa"s;
+    }
+
     Res<> init() override {
         auto i18042port = try$(PortIo::open({0x60, 0x8}));
         try$(attach(makeRc<Ps2::I8042>(i18042port)));
@@ -43,10 +35,13 @@ struct IsaRootBus : Node {
 };
 
 struct RootBus : Node {
-    Ipc::Server& _server;
+    Opt<Ipc::Server&> _server = NONE;
 
-    RootBus(Ipc::Server& server)
-        : _server(server) {}
+    RootBus() {}
+
+    Str name() override {
+        return "root"s;
+    }
 
     Res<> init() override {
         try$(attach(makeRc<IsaRootBus>()));
@@ -54,12 +49,14 @@ struct RootBus : Node {
     }
 
     Res<> bubble(App::Event& e) override {
-        if (auto me = e.is<App::MouseEvent>()) {
-            _server.broadcast<App::MouseEvent>(*me);
-            e.accept();
-        } else if (auto ke = e.is<App::KeyboardEvent>()) {
-            _server.broadcast<App::KeyboardEvent>(*ke);
-            e.accept();
+        if (auto& [server] = _server) {
+            if (auto me = e.is<App::MouseEvent>()) {
+                server.broadcast<App::MouseEvent>(*me);
+                e.accept();
+            } else if (auto ke = e.is<App::KeyboardEvent>()) {
+                server.broadcast<App::KeyboardEvent>(*ke);
+                e.accept();
+            }
         }
 
         return Node::bubble(e);
@@ -89,14 +86,43 @@ struct RootBus : Node {
     }
 };
 
+struct DeviceHandler : Ipc::Handler {
+    Rc<Node> _root;
+
+    DeviceHandler(Rc<Node> root) : _root(root) {}
+
+    Res<Rc<Node>> _resolvePath(Ref::Url const& url) {
+        Rc<Node> current = _root;
+        for (auto& s : url.path.segments()) {
+            bool found = false;
+            for (auto& c : current->_children) {
+                if (c->name() == s) {
+                    found = true;
+                    current = c;
+                    break;
+                }
+            }
+            if (not found)
+                return Error::notFound();
+        }
+        return Ok(current);
+    }
+
+    Async::Task<Rc<Ipc::Session>> acceptSessionAsync(Sys::IpcConnection connection, Ref::Url const& url, Async::CancellationToken) override {
+        auto node = co_try$(_resolvePath(url));
+        co_return Ok(node->open(std::move(connection)));
+    }
+};
+
 } // namespace Strata::Device
 
 Async::Task<> entryPointAsync(Sys::Env&, Async::CancellationToken ct) {
-    auto handler = makeRc<Strata::Device::DeviceHandler>();
+    auto root = makeRc<Strata::Device::RootBus>();
+    auto handler = makeRc<Strata::Device::DeviceHandler>(root);
     auto server = co_trya$(Ipc::Server::createAsync("ipc://strata-device"_url, handler));
+    root->_server = server;
 
     logInfo("devices: building device tree...");
-    auto root = makeRc<Strata::Device::RootBus>(server);
     co_try$(root->init());
 
     co_return co_await Async::join(

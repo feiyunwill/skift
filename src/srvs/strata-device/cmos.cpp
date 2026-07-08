@@ -8,6 +8,8 @@ import Karm.Logger;
 import Karm.Core;
 import :node;
 
+using namespace Karm::Literals;
+
 namespace Strata::Device::Cmos {
 
 export struct Cmos;
@@ -44,7 +46,11 @@ struct Cmos : Node {
     Cmos(Rc<Hal::Io> io)
         : _io(std::move(io)) {}
 
-    Res<> init();
+    Str name() override {
+        return "cmos"s;
+    }
+
+    Res<> init() override;
 
     Res<u8> read(Addr addr) {
         try$(_io->write<AddrReg>(addr));
@@ -76,7 +82,11 @@ static inline u8 fomBcd(u8 value) {
 struct Rtc : Device {
     using Device::Device;
 
-    Res<> init() {
+    Str name() override {
+        return "rtc"s;
+    }
+
+    Res<> init() override {
         logInfo("cmos: rtc initializing...");
 
         // NOTE: The RTC does not need to be initialized but

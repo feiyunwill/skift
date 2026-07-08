@@ -37,7 +37,7 @@
             "tag": "v0.8.0"
         },
         "skift/ambolt": {
-            "commit": "1ecd4f066bf9b268f83d5fc3fa82a9dd554e4c28",
+            "commit": "d184c32c9b8725d8e784ba2ed41e4691604690ca",
             "git": "https://codeberg.org/skift/ambolt",
             "tag": "main"
         },
@@ -52,17 +52,17 @@
             "tag": "main"
         },
         "skift/hideo": {
-            "commit": "92391ae4da6e3b83196dc6186e8d6888cb5c7246",
+            "commit": "d1dfaabf802388c0815d9397b74277932ce58b3c",
             "git": "https://codeberg.org/skift/hideo.git",
             "tag": "main"
         },
         "skift/karm": {
-            "commit": "1eed20ea4c16b4336d1f67401d14f4070ca8fca8",
+            "commit": "7799bb078d5ecd7534babd86733a059905880b23",
             "git": "https://codeberg.org/skift/karm.git",
             "tag": "main"
         },
         "skift/luna": {
-            "commit": "a33c89bfec966e098f6b8c43210fe2e7dff9fc34",
+            "commit": "da2f305fd4e74bc5271cffd36df06c7e19340d87",
             "git": "https://codeberg.org/skift/luna",
             "tag": "main"
         },

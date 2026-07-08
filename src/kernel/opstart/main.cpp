@@ -11,7 +11,7 @@ Async::Task<> entryPointAsync(Sys::Env& env, Async::CancellationToken ct) {
     logInfo("opstart " stringify$(__ck_version_value));
 
     auto file = co_try$(Sys::File::open("file:/loader.json"_url));
-    auto fileStr = co_try$(Io::readAllUtf8(file));
+    auto fileStr = co_try$(Io::readAllText<Utf8>(file));
     auto json = co_try$(Json::parse(fileStr));
 
     logInfo("configs: {}", json);

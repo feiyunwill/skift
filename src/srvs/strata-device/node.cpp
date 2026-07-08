@@ -6,6 +6,9 @@ export module Strata.Device:node;
 
 import Karm.Core;
 import Karm.App;
+import Karm.Ipc;
+import Karm.Sys;
+import Strata.Protos;
 
 using namespace Karm;
 
@@ -32,6 +35,10 @@ export struct Node :
             child->_parent = nullptr;
         }
     }
+
+    virtual Str name() = 0;
+
+    virtual Rc<Ipc::Session> open(Sys::IpcConnection conn);
 
     virtual Res<> init() {
         for (auto& child : _children) {
@@ -79,6 +86,33 @@ export struct Node :
         return _id == o._id;
     }
 };
+
+export template <typename N>
+struct NodeSession : Ipc::Session {
+    Rc<N> _node;
+
+    explicit NodeSession(Sys::IpcConnection conn, Rc<Node> node)
+        : Session(std::move(conn)), _node(node) {}
+
+    Async::Task<IFs::ReadDir::Response> _handleReadDirAsync(Ipc::Message&) {
+        Vec<Sys::DirEntry> entries;
+        for (auto& c : _node->_children)
+            entries.pushBack({c->name(), Sys::Type::DIR});
+        co_return Ok(std::move(entries));
+    }
+
+    Async::Task<> handleAsync(Ipc::Message& msg, Async::CancellationToken) override {
+        if (msg.is<IFs::ReadDir>()) {
+            co_return resp<IFs::ReadDir>(msg, co_await _handleReadDirAsync(msg));
+        } else {
+            co_return unsupported(msg);
+        }
+    }
+};
+
+Rc<Ipc::Session> Node::open(Sys::IpcConnection conn) {
+    return makeRc<NodeSession<Node>>(std::move(conn), Rc<Node>::fromRef(*this));
+}
 
 void Node::detach(Rc<Node> child) {
     child->_parent = nullptr;

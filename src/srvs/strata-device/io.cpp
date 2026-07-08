@@ -9,7 +9,7 @@ import Hjert.Api;
 
 namespace Strata::Device {
 
-export struct PortIo : public Hal::Io {
+export struct PortIo : Hal::Io {
     Hj::Io _io;
 
     PortIo(Hj::Io io)
@@ -29,7 +29,7 @@ export struct PortIo : public Hal::Io {
     }
 };
 
-export struct DmaIo : public Hal::Io {
+export struct DmaIo : Hal::Io {
     Hj::Mapped _mapped;
 
     DmaIo(Hj::Mapped mapped)
